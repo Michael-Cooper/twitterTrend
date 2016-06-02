@@ -1,0 +1,386 @@
+#include <errno.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <stdbool.h>
+#include <pthread.h>
+#include <semaphore.h>
+
+typedef struct node {
+char mainCity[1024];
+char trend1[1024];
+char trend2[1024];
+char trend3[1024];
+char cityWrite[1024];
+} allCities;
+
+allCities * cityArray[100];
+int ready = 0;
+int total = 0;
+char *cityToFind[40];
+char *textFiles[100];
+int textFilesIndex = 0;
+char *textArray[100];
+int textArrayIndex = -1;
+int textCount=0;
+int blah=0;
+int c = 0;
+int flag = 0;
+int block = 0;
+int finalCount;
+pthread_mutex_t mut;
+pthread_cond_t cond;
+sem_t sem, sem2;
+
+
+int makeargv (const char *s, const char *delimeters, char ***argvp ){
+	int error;
+	int i;
+	int numtokens;
+	const char *snew;
+	char *t;
+
+	if ((s==NULL)||(delimeters == NULL)|| (argvp ==NULL)){
+		errno = EINVAL;
+		return -1;
+	}	
+	*argvp = NULL;
+	snew = s +strspn(s,delimeters);
+	if ((t=malloc(strlen(snew)+1))==NULL){
+		return -1;
+	}
+	strcpy(t,snew);
+	numtokens= 0;
+	if (strtok(t,delimeters)!=NULL){
+		for (numtokens=1 ; strtok(NULL,delimeters )!= NULL ; numtokens++);
+	}
+		
+	if ((*argvp = malloc((numtokens +1)*sizeof(char *)))== NULL){
+		error = errno;
+		free(t);
+		errno = error;
+		return -1;
+	}
+	if (numtokens == 0){free(t);}
+	else{
+	strcpy(t,snew);
+	**argvp = strtok(t,delimeters);
+	for (i=1;i<numtokens;i++){
+		*((*argvp)+i) = strtok(NULL,delimeters);
+}
+}
+
+	*((*argvp)+numtokens) = NULL;
+	return numtokens;
+	}
+
+
+//parses the database
+int parser_db (){
+	FILE *ptr_file;
+	char buf[1023];
+	ptr_file = fopen("TwitterDB.txt","r");	
+	if (!ptr_file){
+		return 1;
+	}
+	int counter;
+	counter = 0;
+	
+	while (fgets(buf,1000,ptr_file)!= NULL){
+		allCities *city;
+		city = (allCities *)malloc(sizeof(struct node));
+		int i;
+		char **myargv;
+		char mytest[1024];
+		strcpy(mytest,buf);
+		int numtokens;
+		if ((numtokens = makeargv(mytest,",",&myargv)) == -1){
+			fprintf (stderr,"FAILED TO CREATE FILE");
+		}
+		strcpy(city->mainCity,myargv[0]);
+		strcat(city->mainCity, "\n");
+		strcpy(city->cityWrite,myargv[0]);
+		strcpy(city->trend1,myargv[1]);
+		strcpy(city->trend2,myargv[2]);
+		strcpy(city->trend3,myargv[3]);
+		 
+		cityArray[counter]= city;
+	
+		counter++;
+	}
+
+	fclose(ptr_file);
+	finalCount= counter;
+	return 0;
+
+}
+
+//parses the .in file and puts the .txt files into the queue
+int parser (char *array[]){
+	FILE *ptr_file1;
+	char buf1[1023];
+	ptr_file1 = fopen(array[1],"r");
+	if (!ptr_file1){
+		return 1;
+	}
+	
+	while (fgets(buf1,1000,ptr_file1)!= NULL){
+		int cnt;
+		buf1[strlen(buf1)-1]=0;
+		textFiles[textCount]=strdup(buf1);
+		
+		textCount++;
+		}
+	fclose(ptr_file1);
+return 0;
+}
+
+
+
+int counting (char *array[]){
+	FILE *ptr_file1;
+	char buf1[1023];
+	ptr_file1 = fopen(array[1],"r");
+	if (!ptr_file1){
+		return 1;
+	}
+	
+	while (fgets(buf1,1000,ptr_file1)!= NULL){	
+		c++;
+		}
+	fclose(ptr_file1);
+return 0;
+}
+
+
+
+//Threads call this function, which grabs a .txt file from the limited queue and processes it, formatting and outputting the contents into a .result file
+int text_parser(void* number){
+
+
+
+
+		int num = (int) number;
+
+
+		char *clientNum;
+
+		FILE *ptr_file2;
+
+		FILE *ptr_write;
+	
+		char buf2[1023];
+
+		char str[80];
+
+		sem_wait(&sem);
+
+		if (textArrayIndex == -1){sem_post(&sem); text_parser(num);}
+		if (textArrayIndex == (textCount + 1)){sem_post(&sem); text_parser(num);}
+
+		if (flag == textCount)
+		{
+
+			sem_post(&sem); pthread_exit(NULL);
+		}
+
+
+		if (blah < textCount)
+		{
+
+			//if (ready == total){sem_post(&sem); text_parser(num);}
+
+			ptr_file2= fopen(textArray[textArrayIndex],"r");
+			printf("Thread %d is handling client %s\n", num, textArray[textArrayIndex]);
+			clientNum = strdup(textArray[textArrayIndex]);//grabbing a client.txt from the limited queue
+
+			strcpy(str,textArray[textArrayIndex]);
+
+			textArrayIndex--;
+			blah++;
+			ready--;
+			strcat(str,".result");
+			ptr_write=fopen(str,"w");
+			if (!ptr_file2){
+				printf("about to exit!\nCould not open file:%s\n",textArray[textArrayIndex]);
+				return 1;
+			}
+			sem_post(&sem);
+
+
+			if (!ptr_write){
+				printf("about to exit!\nCould not open file:%s\n",str);
+				return 1;
+
+			}
+			while (fgets(buf2,1000,ptr_file2)!= NULL){
+				*cityToFind= buf2;
+				}
+			int j;
+			for (j=0;j<finalCount;j++){
+
+				if(strcmp(cityArray[j]->mainCity,*cityToFind)==0){
+					fprintf(ptr_write,"%s : %s,%s,%s\n",cityArray[j]->cityWrite,cityArray[j]->trend1,cityArray[j]->trend2,cityArray[j]->trend3);
+
+
+					
+					sem_wait(&sem2);
+					flag++;
+
+
+
+
+					if (flag == textCount)
+					{
+
+						sem_post(&sem2);
+						pthread_exit(NULL);
+					}
+					sem_post(&sem2);
+					break;
+		
+				}
+			}
+			fclose(ptr_file2);
+			fclose(ptr_write);
+			printf("Thread %d is finished handling client %s\n", num, clientNum);
+		
+		}
+
+		else {	
+
+		sem_post(&sem);
+
+		pthread_exit(NULL);}
+	
+
+	if (blah < textCount)
+	{
+
+
+
+		text_parser(num);
+	}
+
+	
+
+	pthread_exit(NULL);
+
+	return 0;
+}
+
+
+
+
+
+
+int main(int argc, char *argv[]){
+
+
+	printf("\n\n\n");
+
+
+	sem_init(&sem, 0, 0);
+	sem_init(&sem2, 0, 1);
+	counting(argv);
+
+
+	int num_threads = atoi(argv[2]);
+	if (num_threads > c){num_threads = c;}
+	total = num_threads;
+	ready = num_threads;
+	pthread_t threads[num_threads];
+
+	printf("\n");
+
+
+
+	
+	int i;
+	//creating the needed threads
+	for (i = 1; i < num_threads + 1; i++)
+	{
+
+		pthread_create(&threads[i - 1], NULL, text_parser, i);
+	}
+
+
+	//parsing the Twitter database and adding the information into a linked list. This happens after the threads have been created.
+	parser_db();
+
+	//parses the ".in" file and places each .txt file into an array.  This happens after the threads have been created.
+	parser(argv);
+
+	//adding cities to limited queue textArray
+	int z;
+	for (z = 0; z < num_threads; z++)
+	{
+		textArray[z] = textFiles[z];
+		textFilesIndex++;
+		textArrayIndex++;
+	}
+
+
+
+	//starts the threads
+	sem_post(&sem);
+	
+	
+
+
+	//this while loop is placing new .txt files into the limited queue as space becomes available
+	while (blah < textCount)
+	{
+
+
+		while (ready == total)
+		{
+
+		}
+
+
+		if (block == 0){
+		printf("Waiting to add clients to the full queue\n");
+		}
+		sem_wait(&sem);
+		while (ready != total)
+		{
+			if (textFilesIndex == textCount){block = 1; break;}
+
+			textArray[ready] = textFiles[textFilesIndex];
+			textFilesIndex++;
+			textArrayIndex++;
+			ready++;
+			
+			if ((textFilesIndex + 1) == textCount)
+			{
+				//printf("\n\n FINISHED SO FAR = %d, adding another city to queue.  We've now queued up %d total cities\n", (textFilesIndex), (textFilesIndex + 1));
+				//printf("Flag = %d\n", flag);
+				//textArray[ready] = textFiles[textFilesIndex];
+				//printf("adding %s to index %d\n", textFiles[textFilesIndex], ready);
+				//textArrayIndex++;
+				
+
+				break;
+			}
+		}
+		sem_post(&sem);
+
+
+
+	}
+
+
+
+	int x;
+	for (x=0;x<finalCount;x++){
+		free(cityArray[x]);
+	}
+	printf("\n\n");
+	return 0;
+}
+
